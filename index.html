@@ -1,26 +1,195 @@
-<div id="map" style="width:100%; height:400px;"></div>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>SafeRoute</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>SafeRoute</title>
+<style>
+* { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
+
+/* Body with local image background */
+body {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: url('background.jpg') no-repeat center center; /* Put your image in same folder and rename to background.jpg */
+    background-size: cover;
+    color: white;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Dark overlay for readability */
+.overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    top: 0;
+    left: 0;
+    z-index: 1;
+}
+
+/* App container */
+.app {
+    position: relative;
+    z-index: 2;
+    width: 380px;
+    padding: 40px 30px;
+    border-radius: 25px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(25px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    text-align: center;
+}
+
+/* Headings & text */
+h1 { font-size: 34px; margin-bottom: 8px; text-shadow: 0 0 15px #00c6ff; }
+p { color: #ccc; font-size: 15px; margin-bottom: 25px; text-shadow: 0 0 5px #000; }
+
+/* Input styles */
+.input-group { position: relative; margin-top: 15px; }
+.input-group .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #00c6ff; font-size: 18px; }
+.input-group input { width: 100%; padding: 14px 14px 14px 40px; border-radius: 12px; border: none; outline: none; background: rgba(255,255,255,0.15); color: white; font-size: 14px; transition: 0.3s; }
+.input-group input:focus { background: rgba(255,255,255,0.25); box-shadow: 0 0 10px #00c6ff; }
+
+/* Buttons */
+button { width: 100%; padding: 16px; margin-top: 14px; border-radius: 20px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.3s; box-shadow: 0 6px 12px rgba(0,0,0,0.4); }
+.start { background: linear-gradient(135deg, #00f0ff, #0066ff); color: white; font-size: 18px; font-weight: 700; text-shadow: 0 0 5px #000; }
+.start:hover { transform: scale(1.06); filter: brightness(1.2); }
+.emergency { background: linear-gradient(135deg, #ff4c4c, #ff7b7b); color: white; font-size: 18px; font-weight: 700; }
+.emergency:hover { transform: scale(1.06); filter: brightness(1.1); }
+.done { background: linear-gradient(135deg, #4cd964, #34c759); color: black; font-weight: 700; }
+.done:hover { transform: scale(1.05); filter: brightness(1.1); }
+
+/* Timer & progress */
+#timer { font-size: 50px; font-weight: bold; margin: 25px 0; letter-spacing: 2px; text-shadow: 0 0 20px #00c6ff; }
+.progress-container { background:#555; width:100%; height:12px; border-radius:6px; margin-top:15px; }
+.progress { height:100%; background:#00c6ff; width:0%; border-radius:6px; transition:0.3s; }
+
+/* Log messages */
+#log { text-align: left; color: #ccc; font-size: 13px; margin-top: 15px; max-height: 120px; overflow-y: auto; text-shadow: 0 0 5px #000; }
+
+/* Hidden elements */
+.hidden { display: none; }
+</style>
 </head>
-
 <body>
+<div class="overlay"></div>
+<div class="app">
 
-  <h1>🚨 SafeRoute</h1>
-  <p>Women Safety Web Application</p>
+<!-- LOGIN -->
+<div id="login">
+    <h1>🛡️ SafeRoute</h1>
+    <p>Keep your journey safe and monitored</p>
+    <div class="input-group"><span class="icon">👤</span><input id="userName" placeholder="Your Name"></div>
+    <div class="input-group"><span class="icon">🧑‍🤝‍🧑</span><input id="guardianName" placeholder="Guardian Name"></div>
+    <div class="input-group"><span class="icon">📱</span><input id="guardianPhone" placeholder="Guardian Phone"></div>
+    <div class="input-group"><span class="icon">⏱️</span><input type="number" id="customTime" placeholder="Journey time (minutes)"></div>
+    <button class="start" id="startBtn">Start Journey</button>
+</div>
 
-  <div id="map" style="width:100%; height:400px;"></div>></div>
+<!-- HOME -->
+<div id="home" class="hidden">
+    <h1>Journey Active</h1>
+    <div id="timer">30:00</div>
+    <div class="progress-container"><div id="progress" class="progress"></div></div>
+    <button class="start" id="startJourneyBtn">Start Journey</button>
+    <button class="start" id="pauseJourneyBtn">Pause</button>
+    <button class="start" id="resumeJourneyBtn">Resume</button>
+    <button class="emergency" id="emergencyBtn">🚨 EMERGENCY</button>
+    <button class="start" id="shareBtn">📍 Share Location</button>
+    <button class="start" id="alarmBtn">🔕 Alarm Toggle</button>
+    <button class="done" id="endJourneyBtn">Reached Home</button>
+    <div id="log"></div>
+</div>
 
-  <button onclick="sendSOS()">Send SOS</button>
+<!-- EMERGENCY -->
+<div id="alert" class="hidden">
+    <h1>🚨 ALERT SENT</h1>
+    <p>Guardian has been notified</p>
+    <button class="done" id="endAlertBtn">End</button>
+</div>
 
-  <p id="status"></p>
+<script>
+window.onload = function(){
+    let time=1800, timerInterval, idle, paused=false, alarmEnabled=true;
+    const login=document.getElementById("login"),
+          home=document.getElementById("home"),
+          alertScreen=document.getElementById("alert"),
+          timerElem=document.getElementById("timer"),
+          log=document.getElementById("log"),
+          progress=document.getElementById("progress");
 
-  <script src="script.js"></script>
-  <!-- Google Maps API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCZHYjPdH5GVYxOi8y2VxsHHc4E6HdBcD4&callback=initMap"
-          async defer></script>
+    // LOGIN → HOME WITH VALIDATION
+    document.getElementById("startBtn").onclick = function(){
+        const userName=document.getElementById("userName").value.trim();
+        const guardianName=document.getElementById("guardianName").value.trim();
+        const guardianPhone=document.getElementById("guardianPhone").value.trim();
+        const customTime=parseInt(document.getElementById("customTime").value);
+
+        if(!userName||!guardianName||!guardianPhone){ alert("Please fill all mandatory fields"); return; }
+
+        const nameRegex=/^[A-Za-z ]+$/;
+        if(!nameRegex.test(userName)){ alert("Your Name should contain letters only"); return; }
+        if(!nameRegex.test(guardianName)){ alert("Guardian Name should contain letters only"); return; }
+
+        const phoneRegex=/^\d{10}$/;
+        if(!phoneRegex.test(guardianPhone)){ alert("Phone Number must be exactly 10 digits"); return; }
+
+        if(isNaN(customTime)||customTime<=0) time=30*60; else time=customTime*60;
+
+        logEvent("Journey initialized");
+        login.classList.add("hidden");
+        home.classList.remove("hidden");
+        updateTimer();
+    }
+
+    // TIMER
+    document.getElementById("startJourneyBtn").onclick = startJourney;
+    document.getElementById("pauseJourneyBtn").onclick = ()=>{ paused=true; logEvent("Journey paused"); }
+    document.getElementById("resumeJourneyBtn").onclick = ()=>{ if(paused){ paused=false; logEvent("Journey resumed"); } }
+
+    function startJourney(){
+        logEvent("Journey started");
+        resetIdle();
+        timerInterval=setInterval(()=>{
+            if(!paused){ time--; updateTimer(); updateProgress(); if(time<=0) endJourney(); }
+        },1000);
+    }
+
+    function updateTimer(){ let m=Math.floor(time/60), s=time%60; timerElem.innerText=`${m}:${s<10?'0':''}${s}`; }
+    function updateProgress(){ let percent=(1-time/(parseInt(document.getElementById("customTime").value||30)*60))*100; progress.style.width=percent+"%"; }
+
+    // INACTIVITY
+    function resetIdle(){ clearTimeout(idle); idle=setTimeout(()=>{ playAlarm(); alert("⚠ Are you awake?"); logEvent("Inactivity alert triggered"); },180000); }
+    document.addEventListener("mousemove", resetIdle); document.addEventListener("touchstart", resetIdle);
+
+    // EMERGENCY
+    document.getElementById("emergencyBtn").onclick = function(){ playAlarm(); home.classList.add("hidden"); alertScreen.classList.remove("hidden"); logEvent("Emergency triggered"); }
+
+    // END JOURNEY
+    document.getElementById("endJourneyBtn").onclick = endJourney;
+    document.getElementById("endAlertBtn").onclick = endJourney;
+    function endJourney(){ clearInterval(timerInterval); alert("Journey completed"); logEvent("Journey ended"); location.reload(); }
+
+    // ALARM
+    document.getElementById("alarmBtn").onclick = function(){ alarmEnabled = !alarmEnabled; alert(alarmEnabled?"Alarm ON":"Alarm OFF"); }
+    function playAlarm(){ if(!alarmEnabled) return; let a=new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"); a.play(); }
+
+    // SHARE LOCATION
+    document.getElementById("shareBtn").onclick = function(){
+        if(navigator.geolocation){
+            navigator.geolocation.getCurrentPosition(pos=>{
+                alert(`Location sent!\nLat: ${pos.coords.latitude}\nLon: ${pos.coords.longitude}`);
+                logEvent("Location shared");
+            });
+        } else alert("Geolocation not supported");
+    }
+
+    // LOG
+    function logEvent(msg){ log.innerHTML+="• "+msg+"<br>"; log.scrollTop=log.scrollHeight; }
+};
+</script>
 </body>
 </html>
