@@ -1,1 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeRoute | Complete</title>
 
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Poppins,sans-serif}
+
+body{
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+background:url('background.jpg') center/cover no-repeat;
+color:white;
+}
+
+.overlay{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+
+.app{
+position:relative;z-index:2;width:390px;
+background:rgba(255,255,255,.15);
+backdrop-filter:blur(18px);
+padding:25px;border-radius:22px;
+text-align:center;
+box-shadow:0 15px 40px rgba(0,0,0,.6)
+}
+
+h1{margin-bottom:5px}
+p{font-size:14px;margin-bottom:12px}
+
+input,button{
+width:100%;padding:12px;border-radius:12px;
+border:none;margin:6px 0;font-size:14px
+}
+
+input{background:rgba(255,255,255,.25);color:white}
+button{cursor:pointer;font-weight:600}
+
+.start{background:#00c6ff;color:black}
+.travel{background:#ffd166}
+.travel.active{box-shadow:0 0 15px #ffd166}
+.emergency{background:#ff4d4d}
+.end{background:#4cd964;color:black}
+
+#timer{font-size:36px;margin:8px 0}
+#stats{font-size:13px;margin-bottom:8px}
+
+#map{width:100%;height:220px;border-radius:15px;margin:8px 0}
+
+#log{font-size:12px;max-height:100px;overflow:auto;text-align:left}
+.hidden{display:none}
+</style>
+</head>
+
+<body>
+<div class="overlay"></div>
+
+<div class="app">
+
+<!-- LOGIN -->
+<div id="login">
+<h1>🛡 SafeRoute</h1>
+<p>Guarding your every step</p>
+
+<input id="name" placeholder="Your Name">
+<input id="guardian" placeholder="Guardian Name">
+<input id="phone" placeholder="Guardian Phone">
+<button class="start" onclick="startApp()">Start Journey</button>
+</div>
+
+<!-- HOME -->
+<div id="home" class="hidden">
+<h2>Journey Active</h2>
+<div id="timer">00:00</div>
+<div id="stats">Distance: 0.00 km</div>
+
+<div id="map"></div>
+
+<button class="start" onclick="startJourney()">▶ Start Tracking</button>
+<button class="travel" id="travelBtn" onclick="toggleTravel()">🚗 Travel Mode</button>
+<button class="emergency" onclick="emergency()">🚨 Emergency</button>
+<button class="end" onclick="endJourney()">🏠 Reached Home</button>
+
+<div id="log"></div>
+</div>
+
+</div>
+
+<script>
+let seconds=0,timerInt=null;
+let watchId=null;
+let travelMode=false;
+let map,marker;
+let lastPos=null;
+let totalDistance=0;
+let stopCounter=0;
+let journeyStarted=false;
+
+function startApp(){
+if(!/^[A-Za-z ]+$/.test(name.value)||!/^[A-Za-z ]+$/.test(guardian.value)){
+alert("Names must contain letters only");return;}
+if(!/^\d{10}$/.test(phone.value)){
+alert("Phone must be 10 digits");return;}
+
+login.classList.add("hidden");
+home.classList.remove("hidden");
+logMsg("Journey initialized");
+}
+
+function startJourney(){
+if(navigator.geolocation){
+watchId=navigator.geolocation.watchPosition(onLocation,()=>alert("GPS error"),{enableHighAccuracy:true});
+logMsg("Waiting for live location...");
+}
+}
+
+function onLocation(pos){
+const lat=pos.coords.latitude;
+const lng=pos.coords.longitude;
+const speed=pos.coords.speed || 0;
+
+if(!journeyStarted){
+journeyStarted=true;
+startTimer();
+initMap(lat,lng);
+logMsg("Live location started");
+}
+
+if(lastPos){
+let d=calcDistance(lastPos.lat,lastPos.lng,lat,lng);
+if(d>0.005){ // 5 meters
+totalDistance+=d;
+stopCounter=0;
+}else{
+stopCounter++;
+}
+stats.innerText=`Distance: ${totalDistance.toFixed(2)} km`;
+
+if(travelMode && speed>0){
+playAlarm();
+logMsg("🚨 Motion detected");
+}
+
+if(stopCounter>15){ // auto reached home
+logMsg("Auto Reached Home");
+endJourney();
+}
+}
+
+lastPos={lat,lng};
+marker.setPosition({lat,lng});
+map.setCenter({lat,lng});
+}
+
+function startTimer(){
+timerInt=setInterval(()=>{
+seconds++;
+let m=Math.floor(seconds/60);
+let s=seconds%60;
+timer.innerText=`${m}:${s<10?'0':''}${s}`;
+},1000);
+}
+
+function initMap(lat,lng){
+map=new google.maps.Map(document.getElementById("map"),{center:{lat,lng},zoom:16});
+marker=new google.maps.Marker({position:{lat,lng},map});
+}
+
+function toggleTravel(){
+travelMode=!travelMode;
+travelBtn.classList.toggle("active");
+travelBtn.innerText=travelMode?"🚗 Travel ON":"🚗 Travel Mode";
+logMsg(travelMode?"Travel mode enabled":"Travel mode disabled");
+}
+
+function emergency(){
+playAlarm();
+let link=`https://www.google.com/maps?q=${lastPos.lat},${lastPos.lng}`;
+alert("Emergency!\nGuardian Link:\n"+link);
+logMsg("🚨 Emergency triggered");
+}
+
+function endJourney(){
+if(timerInt)clearInterval(timerInt);
+if(watchId)navigator.geolocation.clearWatch(watchId);
+alert("Journey completed");
+location.reload();
+}
+
+function calcDistance(lat1,lon1,lat2,lon2){
+const R=6371;
+const dLat=(lat2-lat1)*Math.PI/180;
+const dLon=(lon2-lon1)*Math.PI/180;
+const a=Math.sin(dLat/2)**2+
+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+}
+
+function playAlarm(){
+new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg").play();
+}
+
+function logMsg(msg){
+log.innerHTML+="• "+msg+"<br>";
+log.scrollTop=log.scrollHeight;
+}
+</script>
+
+<script src="https://maps.googleapis.com/maps/api/js"></script>
+</body>
+</html>
